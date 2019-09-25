@@ -1,5 +1,7 @@
 // Python
 #include <boost/python.hpp>
+#include <boost/python/numpy.hpp>
+#include <boost/python/numeric.hpp>
 #include <numpy/ndarrayobject.h>
 #include "knn.h"
 
@@ -10,13 +12,13 @@ object extract_feature(PyObject* activation_, PyObject* coords_)
 {
   PyArrayObject* activation_py = (PyArrayObject*) activation_;
   PyArrayObject* coords_py     = (PyArrayObject*) coords_;
-  int n_batch   = activation_py->dimensions[0];
-  int n_channel = activation_py->dimensions[1];
-  int height    = activation_py->dimensions[2];
-  int width     = activation_py->dimensions[3];
+  int n_batch   = PyArray_DIM(activation_py, 0);
+  int n_channel = PyArray_DIM(activation_py, 1);
+  int height    = PyArray_DIM(activation_py, 2);
+  int width     = PyArray_DIM(activation_py, 3);
 
-  int n_max_coord = coords_py->dimensions[1];
-  int dim_coord   = coords_py->dimensions[2];
+  int n_max_coord = PyArray_DIM(coords_py, 1);
+  int dim_coord   = PyArray_DIM(coords_py, 2);
 
   float* activation           = new float[n_batch * n_channel * height * width];
   float* coords               = new float[n_batch * n_max_coord * dim_coord];
@@ -51,12 +53,12 @@ object extract_feature(PyObject* activation_, PyObject* coords_)
                                                extracted_activation);
   handle<> handle(py_obj);
 
-  numeric::array arr(handle);
+  boost::python::object arr(handle);
 
   free(activation);
   free(coords);
 
-  return arr.copy();
+  return arr;
 }
 
 // CUDA K-NN wrapper
@@ -66,9 +68,9 @@ object knn(PyObject* query_points_, PyObject* ref_points_, int k)
 {
   PyArrayObject* query_points = (PyArrayObject*) query_points_;
   PyArrayObject* ref_points   = (PyArrayObject*) ref_points_;
-  int n_query = query_points->dimensions[1];
-  int n_ref   = ref_points->dimensions[1];
-  int dim     = query_points->dimensions[0];
+  int n_query = PyArray_DIM(query_points, 1);
+  int n_ref   = PyArray_DIM(ref_points, 1);
+  int dim     = PyArray_DIM(query_points, 0);
   float* query_points_c = new float[n_query * dim];
   float* ref_points_c   = new float[n_ref * dim];
   float* dist = new float[n_query * k];
@@ -96,19 +98,22 @@ object knn(PyObject* query_points_, PyObject* ref_points_, int k)
   handle<> handle_dist(py_obj_dist);
   handle<> handle_ind(py_obj_ind);
 
-  numeric::array arr_dist(handle_dist);
-  numeric::array arr_ind(handle_ind);
+  boost::python::object arr_dist(handle_dist);
+  boost::python::object arr_ind(handle_ind);
 
   free(query_points_c);
   free(ref_points_c);
 
-  return make_tuple(arr_dist.copy(), arr_ind.copy());
+  return make_tuple(arr_dist, arr_ind);
+}
+
+int init_numpy() {
+  import_array();
 }
 
 BOOST_PYTHON_MODULE(knn)
 {
-  import_array();
-  numeric::array::set_module_and_type("numpy", "ndarray");
+  init_numpy();
   def("knn", knn);
   def("extract", extract_feature);
 }
